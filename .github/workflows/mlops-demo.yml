@@ -1,0 +1,77 @@
+name: MLOps demo pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_azureml_submission:
+        description: Submit the Azure ML training pipeline after validation
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate repo changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Show changed files
+        run: git diff --name-only HEAD~1 HEAD || true
+
+      - name: Compile training scripts
+        run: python -m compileall data-science/src
+
+      - name: Check required MLOps files exist
+        run: |
+          test -f mlops/azureml/train/pipeline.yml
+          test -f mlops/azureml/train/train.yml
+          test -f mlops/azureml/train/data.yml
+          test -f mlops/azureml/train/train-env.yml
+          test -f data-science/src/prep.py
+          test -f data-science/src/train.py
+          test -f data-science/src/register.py
+
+  azureml-training-pipeline:
+    name: Submit Azure ML training pipeline
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.run_azureml_submission == 'true'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install Azure ML CLI extension
+        run: az extension add --name ml --upgrade
+
+      - name: Submit training pipeline
+        run: |
+          az ml job create \
+            --file mlops/azureml/train/pipeline.yml \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZUREML_WORKSPACE }}"
