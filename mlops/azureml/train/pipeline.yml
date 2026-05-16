@@ -54,7 +54,7 @@ jobs:
         values: ["gini", "entropy"]
       max_depth:
         type: choice
-        values: [1,3,5,10]
+        values: [1,3,5,10, 15]
     objective:
       goal: maximize
       primary_metric: Accuracy
